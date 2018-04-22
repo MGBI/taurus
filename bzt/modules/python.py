@@ -36,9 +36,15 @@ from bzt.modules.aggregator import ResultsReader
 from bzt.modules.functional import FunctionalResultsReader
 from bzt.modules.jmeter import JTLReader
 from bzt.requests_model import HTTPRequest
-from bzt.six import parse, string_types, iteritems, text_type
+from bzt.six import parse, string_types, iteritems, text_type, PY2
 from bzt.utils import BetterDict, ensure_is_dict, shell_exec, FileReader
 from bzt.utils import get_full_path, RequiredTool, PythonGenerator, dehumanize_time
+
+import re
+if PY2:
+    import htmlentitydefs
+else:
+    import html.entities as htmlentitydefs
 
 IGNORED_LINE = re.compile(r"[^,]+,Total:\d+ Passed:\d+ Failed:\d+")
 
@@ -208,6 +214,7 @@ class ApiritifFuncReader(FunctionalResultsReader):
                 yield sample
 
 
+
 class SeleniumScriptBuilder(PythonGenerator):
     """
     :type window_size: tuple[int,int]
@@ -251,6 +258,32 @@ import apiritif
         self.wdlog = wdlog
         self.appium = False
 
+    def unescape_charref(self, value):  # TODO: Regex version?
+        def unicode_char(value):
+            if PY2:
+                return unichr(value)
+            else:
+                return chr(value)
+
+        def match(val):
+            text = val.group(0)
+            if text.startswith("&#"):
+                try:
+                    if text.startswith("&#x"):
+                        return unicode_char(int(text[3:-1], 16))
+                    else:
+                        return unicode_char(int(text[2:-1]))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    text = unicode_char(htmlentitydefs.name2codepoint[text[1:-1]])
+                except KeyError:
+                    pass
+            return text  # leave as is
+
+        return re.sub("&#?\w+;", match, value)
+
     def build_source_code(self):
         self.log.debug("Generating Test Case test methods")
 
@@ -282,7 +315,7 @@ import apiritif
                     url = req.url
                 if req.timeout is not None:
                     test_method.append(self.gen_impl_wait(req.timeout, indent=12))
-                transaction_contents.append(self.gen_statement("self.driver.get(%r)" % url, indent=12))
+                transaction_contents.append(self.gen_statement("self.driver.get(apiritif.apply(%r))" % url, indent=12))
                 transaction_contents.append(self.gen_new_line(indent=0))
 
             actions = req.config.get("actions", [])
@@ -317,7 +350,16 @@ import apiritif
         imports = self.add_imports()
 
         self.root.append(imports)
+        self.root.append(self.gen_global_vars())
         self.root.append(test_class)
+
+    def gen_global_vars(self):
+        variables = self.scenario.get("variables")
+        stmts = []
+        for key, value in iteritems(variables):
+            stmts.append("apiritif.variables['%s']=%r" % (key, value))
+        stmts.append("")
+        return self.gen_statement("\n".join(stmts), indent=0)
 
     def add_imports(self):
         imports = super(SeleniumScriptBuilder, self).add_imports()
@@ -526,34 +568,56 @@ import apiritif
             'mousemove': "move_to_element"
         }
 
-        if atype in ('click', 'doubleclick', 'mousedown', 'mouseup', 'mousemove', 'keys',
-                     'asserttext', 'assertvalue', 'select'):
+        if atype in ('click', 'doubleclick', 'mousedown', 'mouseup', 'mousemove', 'drag', 'type', 'keys',
+                     'asserttext', 'assertvalue', 'select', 'submit', 'storetext', 'storevalue'):
             tpl = "self.driver.find_element(By.%s, %r).%s"
             action = None
             if atype == 'click':
                 action = "click()"
-            elif atype == 'keys':
-                action = "send_keys(%r)" % param
+            elif atype == 'submit':
+                action = "submit()"
+            elif atype in ['keys', 'type']:
+                pre_action = ""
+                if atype == 'type':
+                    pre_action = "clear()."
+                action = "$ssend_keys(%r)" % (pre_action, param)
                 if isinstance(param, str) and param.startswith("KEY_"):
-                    action = "send_keys(Keys.%s)" % param.split("KEY_")[1]
+                    action = "$ssend_keys(Keys.%s)" % (pre_action, param.split("KEY_")[1])
             elif atype in action_chains:
                 tpl = "self.driver.find_element(By.%s, %r)"
                 action = action_chains[atype]
                 return self.gen_statement(
                     "ActionChains(self.driver).%s(%s).perform()" % (action, (tpl % (bys[aby], selector))),
                     indent=indent)
+            elif atype == 'drag':
+                to_aby, to_atype, to_param, to_selector = self._parse_action(param)
+                tpl = "self.driver.find_element(By.%s, %r)"
+                action = "drag_and_drop"
+                return self.gen_statement(
+                    "ActionChains(self.driver).%s(%s, $s).perform()" % (action,
+                                                                        (tpl % (bys[aby], selector)),
+                                                                        (tpl % (bys[to_aby], to_selector))),
+                    indent=indent)
             elif atype == 'select':
                 tpl = "self.driver.find_element(By.%s, %r)"
                 action = "select_by_visible_text(%r)" % param
                 return self.gen_statement("Select(%s).%s" % (tpl % (bys[aby], selector), action),
                                           indent=indent)
-            elif atype.startswith('assert'):
-                if atype == 'asserttext':
-                    action = "get_attribute('innerText')"
-                elif atype == 'assertvalue':
-                    action = "get_attribute('value')"
-                return self.gen_statement("self.assertEqual(%s,%r)" % (tpl % (bys[aby], selector, action), param),
-                                          indent=indent)
+            elif atype.startswith('assert') or atype.startswith('store'):
+
+                if atype in ['asserttext', 'storetext']:
+                    action = "get_attribute('innerText').strip()"
+                elif atype in ['assertvalue', 'storevalue']:
+                    action = "get_attribute('value').strip()"
+                if atype.startswith('assert'):
+                    return self.gen_statement("self.assertEqual(apiritif.apply(%s),apiritif.apply(%r))" % (tpl % (bys[aby], selector, action),
+                                                                           self.unescape_charref(param.strip())),
+                                              indent=indent)
+                elif atype.startswith('store'):
+                    return self.gen_statement(
+                        "apiritif.variables['%s'] = apiritif.apply(%s)" % (param.strip(), tpl % (bys[aby], selector, action)),
+                        indent=indent)
+
             return self.gen_statement(tpl % (bys[aby], selector, action), indent=indent)
         elif atype == 'wait':
             tpl = "WebDriverWait(self.driver, %s).until(econd.%s_of_element_located((By.%s, %r)), %r)"
@@ -565,10 +629,24 @@ import apiritif
         elif atype == 'pause' and aby == 'for':
             tpl = "sleep(%.f)"
             return self.gen_statement(tpl % (dehumanize_time(selector),), indent=indent)
+        elif atype == 'switch':
+            # http://selenium-python.readthedocs.io/navigating.html#moving-between-windows-and-frames
+            if aby in ('window', 'frame'):
+                if aby == "window":
+                    action = "switch_to.window"
+                else:
+                    action = "switch_to.frame"
+                if selector.isdigit():
+                    selector = int(selector)
+                return self.gen_statement("self.driver.%s(%r)" % (action, selector), indent=indent)
+            elif aby == 'defaultframe':
+                return self.gen_statement("self.driver.switch_to.default_content()", indent=indent)
         elif atype == 'clear' and aby == 'cookies':
             return self.gen_statement("self.driver.delete_all_cookies()", indent=indent)
         elif atype == 'assert' and aby == 'title':
             return self.gen_statement("self.assertEqual(self.driver.title,%r)" % selector, indent=indent)
+        elif atype == 'script' and aby == 'eval':
+            return self.gen_statement("self.driver.execute_script(apiritif.apply(%r))" % selector, indent=indent)
 
         raise TaurusInternalException("Could not build code for action: %s" % action_config)
 
@@ -581,9 +659,12 @@ import apiritif
         else:
             raise TaurusConfigError("Unsupported value for action: %s" % action_config)
 
-        actions = "|".join(['click', 'doubleClick', 'mouseDown', 'mouseUp', 'mouseMove', 'select', 'wait', 'keys',
-                            'pause', 'clear', 'assert', 'assertText', 'assertValue'])
-        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title"
+        actions = "|".join([
+            'elem', 'click', 'doubleClick', 'mouseDown', 'mouseUp', 'mouseMove', 'select', 'wait', 'type', 'keys',
+            'pause', 'clear', 'assert', 'assertText', 'assertValue', 'submit', 'switch', 'drag', 'storeText', 'storeValue',
+            'script'
+        ])
+        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval"
         expr = re.compile("^(%s)(%s)\((.*)\)$" % (actions, bys), re.IGNORECASE)
         res = expr.match(name)
         if not res:
@@ -738,7 +819,6 @@ log.setLevel(logging.DEBUG)
         store_cookie = self.scenario.get("store-cookie", None)
         timeout = self.scenario.get("timeout", None)
         follow_redirects = self.scenario.get("follow-redirects", True)
-
 
         if keepalive is None:
             keepalive = True
