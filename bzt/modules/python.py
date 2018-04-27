@@ -629,11 +629,10 @@ import apiritif
             return statements
 
         elif atype == 'editcontent':
-            tpl = "element = self.driver.find_element(By.%s, %r)"
+            tpl = "self.driver.find_element(By.%s, %r)"
             return [
-                self.gen_statement(tpl % (bys[aby], selector), indent=indent),
                 self.gen_statement("self.driver.execute_script(\"arguments[0].innerHTML = %r\" "
-                                   + "%% tpl.apply(%r), element)" % param.strip(), indent=indent)
+                                   + "%% tpl.apply(%r), %s)" % (param.strip(), tpl % (bys[aby], selector)), indent=indent)
                 ]
         elif atype == 'echo' and aby == 'text':
             return [
