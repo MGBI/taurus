@@ -24,6 +24,7 @@ import time
 from abc import abstractmethod
 from collections import OrderedDict
 from subprocess import CalledProcessError
+import shutil
 
 import astunparse
 import yaml
@@ -92,6 +93,10 @@ class ApiritifNoseExecutor(SubprocessedExecutor):
             builder = ApiritifScriptGenerator(scenario, self.label, self.log)
             builder.verbose = self.__is_verbose()
         else:
+            selenium_extras = os.path.join(get_full_path(__file__, step_up=2), "resources", "selenium_taurus_extras.py")
+            selenium_extras_artifacts = os.path.join(self.engine.artifacts_dir, os.path.basename(selenium_extras))
+            if not os.path.isfile(selenium_extras_artifacts):
+                shutil.copyfile(selenium_extras, selenium_extras_artifacts)
             wdlog = self.engine.create_artifact('webdriver', '.log')
             builder = SeleniumScriptBuilder(self.get_scenario(), self.log, wdlog)
 
@@ -234,6 +239,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 
 import apiritif
+import selenium_taurus_extras
 """
 
     IMPORTS_APPIUM = """import unittest
@@ -250,6 +256,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 
 import apiritif
+import selenium_taurus_extras
     """
 
     def __init__(self, scenario, parent_logger, wdlog):
@@ -357,7 +364,7 @@ import apiritif
         variables = self.scenario.get("variables")
         stmts = []
         stmts.append("vars = {}")
-        stmts.append("tpl = apiritif.Template(vars)")
+        stmts.append("tpl = selenium_taurus_extras.Template(vars)")
         for key, value in iteritems(variables):
             stmts.append("vars['%s']=%r" % (key, value))
         stmts.append("")
