@@ -590,7 +590,7 @@ import selenium_taurus_extras
             elif atype in ['keys', 'type']:
                 if atype == 'type':
                     pre_action = "clear()"
-                action = "send_keys(%r)" % param
+                action = "send_keys(tpl.apply(%r))" % param
                 if isinstance(param, str) and param.startswith("KEY_"):
                     action = "send_keys(Keys.%s)" % param.split("KEY_")[1]
             elif atype in action_chains:
