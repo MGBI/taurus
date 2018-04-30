@@ -641,7 +641,7 @@ import selenium_taurus_extras
                 self.gen_statement("self.driver.execute_script(\"arguments[0].innerHTML = %r\" "
                                    + "%% tpl.apply(%r), %s)" % (param.strip(), tpl % (bys[aby], selector)), indent=indent)
                 ]
-        elif atype == 'echo' and aby == 'text':
+        elif atype == 'echo' and aby == 'string':
             return [
                 self.gen_statement("print(tpl.apply(%r))" % param.strip(), indent=indent)
                 ]
@@ -672,6 +672,10 @@ import selenium_taurus_extras
             elif aby == 'defaultframe':
                 return [self.gen_statement("self.driver.switch_to.default_content()", indent=indent)]
 
+        elif atype == 'g' and aby == 'o':
+            return [self.gen_statement(
+                "self.driver.get(tpl.apply(%r))" % param.strip(), indent=indent
+            )]
         elif atype == 'clear' and aby == 'cookies':
             return [self.gen_statement("self.driver.delete_all_cookies()", indent=indent)]
         elif atype == 'assert' and aby == 'title':
@@ -679,6 +683,10 @@ import selenium_taurus_extras
         elif atype == 'store' and aby == 'title':
             return [self.gen_statement(
                 "vars['%s'] = tpl.apply(self.driver.title)" % param.strip(), indent=indent
+            )]
+        elif atype == 'store' and aby == 'string':
+            return [self.gen_statement(
+                "vars['%s'] = tpl.apply('%s')" % (param.strip(), selector.strip()), indent=indent
             )]
         elif atype == 'script' and aby == 'eval':
             return [self.gen_statement("self.driver.execute_script(tpl.apply(%r))" % selector, indent=indent)]
@@ -697,9 +705,9 @@ import selenium_taurus_extras
         actions = "|".join([
             'elem', 'click', 'doubleClick', 'mouseDown', 'mouseUp', 'mouseMove', 'select', 'wait', 'type', 'keys',
             'pause', 'clear', 'assert', 'assertText', 'assertValue', 'submit', 'switch', 'drag', 'storeText',
-            'storeValue', 'script', 'store', 'editContent', 'echo'
+            'storeValue', 'script', 'store', 'editContent', 'echo', 'G'
         ])
-        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval|Text"
+        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval|Text|o|String"
         expr = re.compile("^(%s)(%s)\((.*)\)$" % (actions, bys), re.IGNORECASE)
         res = expr.match(name)
         if not res:
