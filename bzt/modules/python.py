@@ -499,6 +499,9 @@ import selenium_taurus_extras
 
         scenario_timeout = self.scenario.get("timeout", "30s")
         setup_method_def.append(self.gen_impl_wait(scenario_timeout))
+
+        setup_method_def.append(self.gen_statement("self.wnd_mng = selenium_taurus_extras.WindowManager(self.driver)"))
+
         if self.window_size:  # FIXME: unused in fact
             statement = self.gen_statement("self.driver.set_window_position(0, 0)")
             setup_method_def.append(statement)
@@ -655,20 +658,17 @@ import selenium_taurus_extras
         elif atype == 'pause' and aby == 'for':
             tpl = "sleep(%.f)"
             return [self.gen_statement(tpl % (dehumanize_time(selector),), indent=indent)]
-        elif atype == 'switch' or (atype == 'close' and aby == 'window'):
-            # http://selenium-python.readthedocs.io/navigating.html#moving-between-windows-and-frames
-            if aby in ('window', 'frame'):
-                if aby == "window":
-                    action = "switch_to.window"
-                else:
-                    action = "switch_to.frame"
-                    if selector.isdigit():
-                        selector = int(selector)
 
-                statements = [self.gen_statement("self.driver.%s(%r)" % (action, selector), indent=indent)]
-                if atype == 'close':
-                    statements.append(self.gen_statement("self.driver.close()", indent=indent))
-                return statements
+        elif atype == 'switch' and aby == 'window':
+            return [self.gen_statement("self.wnd_mng.switch(%r)" % selector, indent=indent)]
+        elif atype == 'close' and aby == 'window':
+            return [self.gen_statement("self.wnd_mng.close(%r)" % selector, indent=indent)]
+        elif atype == 'switch' and aby in ["frame", "defaultframe"]:
+            if aby  == 'frame':
+                action = "switch_to.frame"
+                if selector.isdigit():
+                    selector = int(selector)
+                return [self.gen_statement("self.driver.%s(%r)" % (action, selector), indent=indent)]
             elif aby == 'defaultframe':
                 return [self.gen_statement("self.driver.switch_to.default_content()", indent=indent)]
 
@@ -704,7 +704,7 @@ import selenium_taurus_extras
 
         actions = "|".join([
             'elem', 'click', 'doubleClick', 'mouseDown', 'mouseUp', 'mouseMove', 'select', 'wait', 'type', 'keys',
-            'pause', 'clear', 'assert', 'assertText', 'assertValue', 'submit', 'switch', 'drag', 'storeText',
+            'pause', 'clear', 'assert', 'assertText', 'assertValue', 'submit', 'switch', 'close', 'drag', 'storeText',
             'storeValue', 'script', 'store', 'editContent', 'echo', 'G'
         ])
         bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval|Text|o|String"
