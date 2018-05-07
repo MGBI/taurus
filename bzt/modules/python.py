@@ -645,9 +645,15 @@ import selenium_taurus_extras
                                    + "%% tpl.apply(%r), %s)" % (param.strip(), tpl % (bys[aby], selector)), indent=indent)
                 ]
         elif atype == 'echo' and aby == 'string':
-            return [
-                self.gen_statement("print(tpl.apply(%r))" % param.strip(), indent=indent)
+            if param and len(selector) == 0:
+                return [
+                    self.gen_statement("print(tpl.apply(%r))" % param.strip(), indent=indent)
+                    ]
+            elif len(selector) > 0 and not param:
+                return [
+                    self.gen_statement("print(tpl.apply(%r))" % selector.strip(), indent=indent)
                 ]
+
         elif atype == 'wait':
             tpl = "WebDriverWait(self.driver, %s).until(econd.%s_of_element_located((By.%s, %r)), %r)"
             mode = "visibility" if param == 'visible' else 'presence'
@@ -672,10 +678,15 @@ import selenium_taurus_extras
             elif aby == 'defaultframe':
                 return [self.gen_statement("self.driver.switch_to.default_content()", indent=indent)]
 
-        elif atype == 'g' and aby == 'o':
-            return [self.gen_statement(
-                "self.driver.get(tpl.apply(%r))" % param.strip(), indent=indent
-            )]
+        elif atype == 'go':
+            if param and (len(param) > 0 and len(selector) == 0):
+                return [self.gen_statement(
+                    "self.driver.get(tpl.apply(%r))" % param.strip(), indent=indent
+                )]
+            elif len(selector) > 0 and not param or len(param) == 0:
+                return [self.gen_statement(
+                    "self.driver.get(tpl.apply(%r))" % selector.strip(), indent=indent
+                )]
         elif atype == 'clear' and aby == 'cookies':
             return [self.gen_statement("self.driver.delete_all_cookies()", indent=indent)]
         elif atype == 'assert' and aby == 'title':
@@ -705,23 +716,31 @@ import selenium_taurus_extras
         actions = "|".join([
             'elem', 'click', 'doubleClick', 'mouseDown', 'mouseUp', 'mouseMove', 'select', 'wait', 'type', 'keys',
             'pause', 'clear', 'assert', 'assertText', 'assertValue', 'submit', 'switch', 'close', 'drag', 'storeText',
-            'storeValue', 'script', 'store', 'editContent', 'echo', 'G'
+            'storeValue', 'script', 'store', 'editContent', 'echo', 'Go'
         ])
-        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval|Text|o|String"
-        expr = re.compile("^(%s)(%s)\((.*)\)$" % (actions, bys), re.IGNORECASE)
+        bys = "byName|byID|byCSS|byXPath|byLinkText|For|Cookies|Title|Window|Frame|DefaultFrame|Eval|Text|String"
+        expr = re.compile("^(%s)(%s)?(\((.*)\))?$" % (actions, bys), re.IGNORECASE)
         res = expr.match(name)
         if not res:
             raise TaurusConfigError("Unsupported action: %s" % name)
 
         atype = res.group(1).lower()
-        aby = res.group(2).lower()
-        selector = res.group(3)
+        aby = res.group(2)
+        if not aby:
+            aby = ""
+        else:
+            aby = aby.lower()
+        selector = res.group(4)
 
         # hello, reviewer!
-        if selector.startswith('"') and selector.endswith('"'):
-            selector = selector[1:-1]
-        elif selector.startswith("'") and selector.endswith("'"):
-            selector = selector[1:-1]
+        if selector:
+            if selector.startswith('"') and selector.endswith('"'):
+                selector = selector[1:-1]
+            elif selector.startswith("'") and selector.endswith("'"):
+                selector = selector[1:-1]
+        else:
+            selector = ""
+
 
         return aby, atype, param, selector
 
