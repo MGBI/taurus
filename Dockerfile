@@ -47,12 +47,14 @@ RUN apt-get -y update \
     nodejs \
     mono-complete nuget \
     net-tools \
-  && apt-get -y install --no-install-recommends python-dev python-pip \
-  && python2 -m pip install --upgrade pip setuptools wheel \
-  && apt-get -y install --no-install-recommends python3-dev python3-pip \
+#  && apt-get -y install --no-install-recommends python-dev python-pip \
+#  && python2 -m pip install --upgrade pip setuptools wheel \
+  && apt-get -y install --no-install-recommends python3.5-dev python3-pip \
   && python3 -m pip install --upgrade setuptools pip wheel \
-  && ln -sf /usr/bin/pip2 /usr/local/bin/pip \
-  && pip install locustio robotframework robotframework-seleniumlibrary \
+  && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
+  && ln -sf /usr/bin/python3.5 /usr/local/bin/python \
+  && ln -sf /usr/bin/nodejs /usr/local/bin/node \
+  && pip3 install locustio robotframework robotframework-seleniumlibrary \
   && pip3 install "molotov!=1.5" \
   && gem install rspec \
   && gem install selenium-webdriver \
@@ -70,7 +72,7 @@ COPY . /tmp/bzt-src
 WORKDIR /tmp/bzt-src
 RUN google-chrome-stable --version && firefox --version && mono --version && nuget | head -1 \
   && ./build-sdist.sh \
-  && pip2 install dist/bzt-*.tar.gz \
+  && pip3 install dist/bzt-*.tar.gz \
   && echo '{"install-id": "Docker"}' > /etc/bzt.d/99-zinstallID.json \
   && echo '{"settings": {"artifacts-dir": "/tmp/artifacts"}}' > /etc/bzt.d/90-artifacts-dir.json \
   && bzt -install-tools -v && ls -la /tmp && cat /tmp/jpgc-*.log && ls -la ~/.bzt/jmeter-taurus/*/lib/ext && ls -la ~/.bzt/jmeter-taurus/*/lib/ext/jmeter-plugins-tst-*.jar

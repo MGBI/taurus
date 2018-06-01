@@ -2,8 +2,8 @@
 services:
 - virtual-display
 - module: shellexec
-  prepare: 
-  - command: python -m SimpleHTTPServer 8000
+  prepare:
+  - command: python3 -m http.server 8000
     background: true
   - command: sleep 900 && exit 1  # this will make it interrupt in case it hangs
     background: true
